@@ -2,6 +2,7 @@
 import pandas as pd
 import streamlit as st
 
+import hmac
 import io
 import os
 from datetime import datetime, timedelta, timezone
@@ -121,6 +122,9 @@ h2, h3 { font-family: 'Bricolage Grotesque', sans-serif !important; font-weight:
     background: rgba(255,255,255,.75); border-radius: 20px !important; border: 1.5px solid #f3d6ea !important;
 }
 [data-testid="stAlert"] { border-radius: 16px; }
+
+/* Halaman login di tengah */
+.st-key-kotak_login { max-width: 420px; margin: 0 auto; }
 
 /* Jangan pudarkan tampilan saat update otomatis tiap menit */
 [data-stale="true"], .stale-element { opacity: 1 !important; transition: none !important; }
@@ -746,6 +750,38 @@ def halaman_topup(cs, isi_xlsx, sheet_id):
 # =========================================================
 # MAIN
 # =========================================================
+
+# =========================================================
+# LOGIN
+# =========================================================
+
+def halaman_login():
+    """Minta username & password (dari Secrets LOGIN_USER / LOGIN_PASSWORD)."""
+    user, sandi = rahasia("LOGIN_USER"), rahasia("LOGIN_PASSWORD")
+    if not user or not sandi or st.session_state.get("login_ok"):
+        return
+
+    with st.container(key="kotak_login"):
+        st.markdown(
+            '<div class="judul" style="justify-content:center;margin-top:3rem">'
+            '<span class="ikon">📊</span><span class="teks">Dashboard DMF 2</span></div>'
+            '<div class="sub" style="text-align:center">Masuk dulu untuk lihat laporan ✨</div>',
+            unsafe_allow_html=True,
+        )
+        with st.form("form_login"):
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
+            masuk = st.form_submit_button("Masuk", type="primary", width="stretch")
+        if masuk:
+            if hmac.compare_digest(u.strip(), str(user)) and hmac.compare_digest(p, str(sandi)):
+                st.session_state["login_ok"] = True
+                st.rerun()
+            else:
+                st.error("Username atau password salah.")
+    st.stop()
+
+
+halaman_login()
 
 st.markdown(
     '<div class="judul"><span class="ikon">📊</span>'

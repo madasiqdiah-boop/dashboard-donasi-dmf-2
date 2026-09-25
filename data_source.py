@@ -281,17 +281,20 @@ META_API = "https://graph.facebook.com/v21.0"
 # Sumber biaya & nomor iklan dari Meta (menggantikan catatan manual Madha).
 #   kata=None : semua ad set, dicocokkan ke CS lewat nama ad set / campaign
 #   kata="x"  : hanya ad set yang namanya memuat "x", dicatat atas nama `cs`
-ATURAN_META = [
-    # HKM 2: semua ad set, nama ad set = nama CS
-    {"akun": "373308251987522", "kata": None, "cs": None},
-    # HKM 3: hanya ad set "Bu Zakiyah/..." -> Madina (nomor WA lain diabaikan)
-    {"akun": "346897904809464", "kata": "zakiyah", "cs": "Madina"},
-]
+def aturan_meta() -> list[dict]:
+    """Aturan akun iklan. ID akun dibaca dari Secrets / .env:
+    META_AKUN_HKM2 dan META_AKUN_HKM3."""
+    return [a for a in [
+        # HKM 2: semua ad set, nama ad set = nama CS
+        {"akun": os.environ.get("META_AKUN_HKM2", ""), "kata": None, "cs": None},
+        # HKM 3: hanya ad set "Bu Zakiyah/..." -> Madina (nomor WA lain diabaikan)
+        {"akun": os.environ.get("META_AKUN_HKM3", ""), "kata": "zakiyah", "cs": "Madina"},
+    ] if a["akun"]]
 
 
 def cs_untuk_iklan(akun: str, adset: str, campaign: str, peta: dict):
-    """Nama CS pemilik iklan menurut ATURAN_META (None = diabaikan)."""
-    aturan = next((a for a in ATURAN_META if a["akun"] == akun), None)
+    """Nama CS pemilik iklan menurut aturan_meta() (None = diabaikan)."""
+    aturan = next((a for a in aturan_meta() if a["akun"] == akun), None)
     if aturan and aturan["kata"]:
         return aturan["cs"] if aturan["kata"] in norm(adset) else None
     return cari_cs(adset, peta) or cari_cs(campaign, peta)
@@ -470,7 +473,7 @@ def _ambil_insights(token: str, akun: str, mulai: str, sampai: str) -> list[dict
 
 
 def iklan_meta_harian(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> pd.DataFrame:
-    """Biaya & nomor per hari per CS dari akun-akun di ATURAN_META.
+    """Biaya & nomor per hari per CS dari akun-akun di aturan_meta().
 
     Diambil per potongan 7 hari secara bersamaan (jauh lebih cepat dari satu
     permintaan panjang). Hari tanpa biaya tetap diambil karena Meta bisa
@@ -479,7 +482,7 @@ def iklan_meta_harian(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> 
     from concurrent.futures import ThreadPoolExecutor
 
     peta = peta_alias(cs)
-    tugas = [(a["akun"], m, s) for a in ATURAN_META for m, s in _potong_per_minggu(mulai, sampai)]
+    tugas = [(a["akun"], m, s) for a in aturan_meta() for m, s in _potong_per_minggu(mulai, sampai)]
     with ThreadPoolExecutor(max_workers=8) as pool:
         hasil = list(pool.map(lambda t: (t[0], _ambil_insights(token, *t)), tugas))
 
@@ -524,7 +527,7 @@ def iklan_meta_rentang(token: str, mulai: str, sampai: str, cs: pd.DataFrame) ->
         return akun, hasil
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        semua = list(pool.map(ambil, [a["akun"] for a in ATURAN_META]))
+        semua = list(pool.map(ambil, [a["akun"] for a in aturan_meta()]))
 
     baris = []
     for akun, data in semua:
@@ -537,7 +540,7 @@ def iklan_meta_rentang(token: str, mulai: str, sampai: str, cs: pd.DataFrame) ->
 
 
 def timpa_dengan_meta(performa: pd.DataFrame, meta: pd.DataFrame) -> pd.DataFrame:
-    """Biaya & nomor CS di ATURAN_META diganti data Meta, per bulan.
+    """Biaya & nomor CS di aturan_meta() diganti data Meta, per bulan.
 
     Untuk (CS, bulan) yang punya data di Meta, catatan Madha bulan itu diabaikan
     (Madha sering dicatat borongan, misal satu baris untuk sebulan).
