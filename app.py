@@ -39,12 +39,7 @@ html, body, .stApp,
     font-family: 'Plus Jakarta Sans', sans-serif;
 }
 .stApp {
-    background:
-        radial-gradient(900px 500px at 0% 0%, #ffd3ea 0%, transparent 60%),
-        radial-gradient(800px 500px at 100% 10%, #d3f8ea 0%, transparent 55%),
-        radial-gradient(900px 600px at 50% 100%, #dbe7ff 0%, transparent 60%),
-        #fff8fc;
-    background-attachment: fixed;
+    background: #fff6fa;
     color: var(--teks);
 }
 [data-testid="stHeader"] { background: transparent; }
@@ -52,12 +47,11 @@ html, body, .stApp,
 
 /* ---------- judul ---------- */
 .judul { display: flex; align-items: center; gap: .6rem; margin: 0 0 .2rem 0; }
-.judul .ikon { font-size: 2rem; filter: drop-shadow(0 4px 10px rgba(255,79,163,.35)); }
+.judul .ikon { font-size: 2rem; }
 .judul .teks {
     font-family: 'Bricolage Grotesque', sans-serif;
     font-weight: 800; font-size: 2.1rem; line-height: 1.1; letter-spacing: -.02em;
-    background: linear-gradient(90deg, var(--pink), var(--ungu) 45%, var(--biru) 75%, var(--mint));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+    color: var(--pink);
 }
 .sub { color: var(--teks-pudar); font-size: .9rem; margin-bottom: .4rem; }
 .sub b { color: var(--pink); }
@@ -79,21 +73,21 @@ h2, h3 { font-family: 'Bricolage Grotesque', sans-serif !important; font-weight:
     font-family: 'Bricolage Grotesque', sans-serif !important;
     font-weight: 800; font-size: 1.6rem; color: var(--teks);
 }
-[data-testid="stColumn"]:nth-child(4n+1) [data-testid="stMetric"] { background: linear-gradient(135deg, #ffd9ec, #fff3f9); border-color: #ffb3d6 !important; }
-[data-testid="stColumn"]:nth-child(4n+2) [data-testid="stMetric"] { background: linear-gradient(135deg, #cdf7e6, #f1fffa); border-color: #8fe6c6 !important; }
-[data-testid="stColumn"]:nth-child(4n+3) [data-testid="stMetric"] { background: linear-gradient(135deg, #d6e5ff, #f3f7ff); border-color: #a9c6ff !important; }
-[data-testid="stColumn"]:nth-child(4n+4) [data-testid="stMetric"] { background: linear-gradient(135deg, #eadcff, #f9f5ff); border-color: #cdb4ff !important; }
+[data-testid="stColumn"]:nth-child(4n+1) [data-testid="stMetric"] { background: #ffe3f0; border-color: #ffb3d6 !important; }
+[data-testid="stColumn"]:nth-child(4n+2) [data-testid="stMetric"] { background: #d8f8ec; border-color: #8fe6c6 !important; }
+[data-testid="stColumn"]:nth-child(4n+3) [data-testid="stMetric"] { background: #e0ebff; border-color: #a9c6ff !important; }
+[data-testid="stColumn"]:nth-child(4n+4) [data-testid="stMetric"] { background: #efe6ff; border-color: #cdb4ff !important; }
 
 /* ---------- tab ---------- */
 [data-baseweb="tab-list"], [data-testid="stTabs"] [role="tablist"] {
-    gap: .4rem; background: rgba(255,255,255,.65); padding: .3rem;
-    border-radius: 999px; width: fit-content; backdrop-filter: blur(6px);
+    gap: .4rem; background: white; padding: .3rem;
+    border-radius: 999px; width: fit-content;
 }
 [data-baseweb="tab-highlight"], [data-baseweb="tab-border"],
 [data-testid="stTabs"] [role="tablist"] > div:not([role="tab"]) { display: none !important; }
 [data-testid="stTabs"] [role="tab"], button[data-baseweb="tab"] { border: none !important; border-radius: 999px !important; padding: .35rem 1rem !important; height: auto !important; }
 [data-testid="stTabs"] [role="tab"] p { font-weight: 600; }
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] { background: linear-gradient(90deg, var(--pink), var(--ungu)); }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] { background: var(--pink); }
 [data-testid="stTabs"] [role="tab"][aria-selected="true"] p { color: white !important; }
 
 /* ---------- tombol & menu ---------- */
@@ -103,14 +97,13 @@ h2, h3 { font-family: 'Bricolage Grotesque', sans-serif !important; font-weight:
 }
 .stButton button:hover { border-color: var(--pink) !important; }
 .stFormSubmitButton button, .stButton button[kind="primary"] {
-    background: linear-gradient(90deg, var(--pink), var(--ungu) 60%, var(--biru)) !important;
+    background: var(--pink) !important;
     color: white !important; border: none !important;
-    box-shadow: 0 8px 20px -8px rgba(255,79,163,.6);
 }
 .stFormSubmitButton button p, .stButton button[kind="primary"] p { color: white !important; }
 [data-testid="stButtonGroup"] button { border-radius: 999px !important; font-weight: 600 !important; background: rgba(255,255,255,.8); }
 [data-testid="stButtonGroup"] button[kind*="Active"] {
-    background: linear-gradient(90deg, var(--mint), var(--biru)) !important;
+    background: var(--mint) !important;
     border-color: transparent !important;
 }
 [data-testid="stButtonGroup"] button[kind*="Active"] p { color: white !important; }
@@ -146,9 +139,9 @@ h2, h3 { font-family: 'Bricolage Grotesque', sans-serif !important; font-weight:
     .st-key-periode [data-testid="stColumn"] { flex: 1 1 100% !important; min-width: 100% !important; width: 100% !important; }
     [data-testid="stMetricLabel"] p { font-size: .72rem; }
     [data-testid="stMetricValue"], [data-testid="stMetricValue"] div { font-size: 1.1rem; }
-    [data-baseweb="tab-list"] { width: 100%; justify-content: space-between; }
-    button[data-baseweb="tab"] { padding: .3rem .6rem !important; }
-    button[data-baseweb="tab"] p { font-size: .8rem; }
+    [data-testid="stTabs"] [role="tablist"] { width: 100%; justify-content: space-between; gap: .1rem; padding: .25rem; }
+    [data-testid="stTabs"] [role="tab"] { padding: .3rem .55rem !important; }
+    [data-testid="stTabs"] [role="tab"] p { font-size: .76rem; }
 }
 </style>
 """, unsafe_allow_html=True)
