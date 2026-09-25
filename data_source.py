@@ -496,6 +496,46 @@ def iklan_meta_harian(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> 
     return df.groupby(["tanggal", "nama"], as_index=False).sum()
 
 
+def iklan_meta_rentang(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> pd.DataFrame:
+    """Biaya & hasil per CS untuk SATU rentang tanggal (sama dengan Ads Manager).
+
+    Hasil per rentang tidak sama dengan jumlah hasil harian, karena Meta
+    menghitung satu orang sekali dalam rentang yang diminta.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    peta = peta_alias(cs)
+    import json
+
+    def ambil(akun):
+        url = f"{META_API}/act_{akun}/insights"
+        params = {
+            "access_token": token, "level": "adset",
+            "time_range": json.dumps({"since": mulai, "until": sampai}),
+            "fields": "adset_name,campaign_name,spend,actions", "limit": 500,
+        }
+        hasil = []
+        while url:
+            data = requests.get(url, params=params, timeout=120).json()
+            if "error" in data:
+                raise RuntimeError(data["error"].get("message", "Error Meta API"))
+            hasil += data.get("data", [])
+            url, params = data.get("paging", {}).get("next"), None
+        return akun, hasil
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        semua = list(pool.map(ambil, [a["akun"] for a in ATURAN_META]))
+
+    baris = []
+    for akun, data in semua:
+        for r in data:
+            nama = cs_untuk_iklan(akun, r.get("adset_name"), r.get("campaign_name"), peta)
+            if nama:
+                baris.append({"nama": nama, "biaya_iklan": angka(r.get("spend")), "nomor": _hasil_meta(r)})
+    df = pd.DataFrame(baris, columns=["nama", "biaya_iklan", "nomor"])
+    return df.groupby("nama", as_index=False).sum()
+
+
 def timpa_dengan_meta(performa: pd.DataFrame, meta: pd.DataFrame) -> pd.DataFrame:
     """Biaya & nomor CS di ATURAN_META diganti data Meta, per bulan.
 

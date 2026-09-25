@@ -151,11 +151,22 @@ KOLOM_PERFORMA = ["nomor", "biaya_iklan", "perdana", "gulungan",
                   "donasi_perdana", "donasi_gulungan"]
 
 
-def data_rentang(mulai, akhir, performa, cs):
-    """Gabungkan daftar CS aktif + performa (dijumlah) untuk rentang tanggal."""
+def data_rentang(mulai, akhir, performa, cs, meta_rentang=None):
+    """Gabungkan daftar CS aktif + performa (dijumlah) untuk rentang tanggal.
+
+    Kalau ada meta_rentang, biaya & nomor CS yang beriklan di Meta memakai
+    angka rentang itu langsung dari Meta (sama dengan Ads Manager).
+    """
     aktif = cs[cs["aktif"]][["nama"]]
     pilih = performa[performa["tanggal"].between(pd.Timestamp(mulai), pd.Timestamp(akhir))]
     perf = pilih.groupby("nama", as_index=False)[KOLOM_PERFORMA].sum()
+    if meta_rentang is not None and not meta_rentang.empty:
+        m = meta_rentang.set_index("nama")
+        ada = perf["nama"].isin(m.index)
+        perf.loc[ada, "biaya_iklan"] = perf.loc[ada, "nama"].map(m["biaya_iklan"])
+        perf.loc[ada, "nomor"] = perf.loc[ada, "nama"].map(m["nomor"])
+        baru = m.loc[~m.index.isin(perf["nama"])].reset_index()
+        perf = pd.concat([perf, baru], ignore_index=True).fillna(0)
     df = aktif.merge(perf, on="nama", how="left")
     for kolom in KOLOM_PERFORMA:
         if kolom not in df:
@@ -211,6 +222,16 @@ def ambil_meta_hari_ini(hari_ini, cs_json):
     token = rahasia("META_ACCESS_TOKEN")
     cs = pd.read_json(io.StringIO(cs_json))
     return ds.iklan_meta_harian(token, hari_ini, hari_ini, cs)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def ambil_meta_rentang(mulai, akhir, cs_json):
+    """Biaya & hasil per CS untuk rentang terpilih, langsung dari Meta (= Ads Manager)."""
+    token = rahasia("META_ACCESS_TOKEN")
+    if not token:
+        return None
+    cs = pd.read_json(io.StringIO(cs_json))
+    return ds.iklan_meta_rentang(token, f"{mulai:%Y-%m-%d}", f"{akhir:%Y-%m-%d}", cs)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -488,8 +509,8 @@ def tab_rekomendasi(df):
 """)
 
 
-def halaman_laporan(mulai, akhir, performa, dana, cs, status):
-    df = pasang_status(data_rentang(mulai, akhir, performa, cs), status)
+def halaman_laporan(mulai, akhir, performa, dana, cs, status, meta_rentang=None):
+    df = pasang_status(data_rentang(mulai, akhir, performa, cs, meta_rentang), status)
     total = baris_total(df).iloc[0]
 
     t1, t2, t3 = st.tabs(["📋 Laporan", "💰 Jatah & Sisa", "🚀 Rekomendasi"])
@@ -670,8 +691,13 @@ def laporan_live(mulai, akhir, cs):
     except Exception as e:
         st.warning(f"Status campaign Meta tidak bisa diambil: {e}", icon="⚠️")
         status = None
+    try:
+        meta_rentang = ambil_meta_rentang(mulai, akhir, cs.to_json())
+    except Exception as e:
+        st.warning(f"Angka rentang dari Meta tidak bisa diambil, pakai jumlah harian: {e}", icon="⚠️")
+        meta_rentang = None
     st.caption(f"🟢 Diperbarui {waktu_sekarang():%H:%M:%S} WIB")
-    halaman_laporan(mulai, akhir, data["performa"], data["dana"], cs, status)
+    halaman_laporan(mulai, akhir, data["performa"], data["dana"], cs, status, meta_rentang)
 
 
 if menu == "📊 Laporan":
