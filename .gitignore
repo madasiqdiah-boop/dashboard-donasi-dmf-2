@@ -1,0 +1,16 @@
+# Rahasia - jangan pernah di-commit
+.env
+credentials.json
+*.json.key
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets Streamlit (token, ID sheet, password)
+.streamlit/secrets.toml
+
+# Topup sementara (sebelum tersambung ke Google Sheet)
+data/topup.csv
