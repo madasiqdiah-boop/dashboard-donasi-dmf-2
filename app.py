@@ -22,35 +22,133 @@ st.set_page_config(
 # Tampilan rapi di HP: judul kecil, kartu angka 2 per baris, jarak lebih rapat
 st.markdown("""
 <style>
-.block-container { padding-top: 2.5rem; padding-bottom: 2rem; }
-h1 { font-size: 1.9rem !important; padding-bottom: 0 !important; }
-[data-testid="stMetricValue"] { font-size: 1.6rem; }
-[data-testid="stMetric"] { padding: 0.7rem 1rem !important; }
-[data-testid="stMetric"] > div,
-[data-testid="stMetricLabel"],
-[data-testid="stMetricValue"] { padding: 0 !important; margin: 0 !important; min-height: 0 !important; }
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+    --pink: #ff4fa3;
+    --mint: #12b886;
+    --biru: #3b82f6;
+    --ungu: #8b5cf6;
+    --teks: #2a1f3d;
+    --teks-pudar: #7a6d8f;
+}
+
+/* ---------- dasar ---------- */
+html, body, .stApp,
+.stApp :is(p, span, div, label, li, a, input, textarea, button):not([data-testid="stIconMaterial"]):not(.material-symbols-rounded) {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.stApp {
+    background:
+        radial-gradient(900px 500px at 0% 0%, #ffd3ea 0%, transparent 60%),
+        radial-gradient(800px 500px at 100% 10%, #d3f8ea 0%, transparent 55%),
+        radial-gradient(900px 600px at 50% 100%, #dbe7ff 0%, transparent 60%),
+        #fff8fc;
+    background-attachment: fixed;
+    color: var(--teks);
+}
+[data-testid="stHeader"] { background: transparent; }
+.block-container { padding-top: 2.2rem; padding-bottom: 2rem; }
+
+/* ---------- judul ---------- */
+.judul { display: flex; align-items: center; gap: .6rem; margin: 0 0 .2rem 0; }
+.judul .ikon { font-size: 2rem; filter: drop-shadow(0 4px 10px rgba(255,79,163,.35)); }
+.judul .teks {
+    font-family: 'Bricolage Grotesque', sans-serif;
+    font-weight: 800; font-size: 2.1rem; line-height: 1.1; letter-spacing: -.02em;
+    background: linear-gradient(90deg, var(--pink), var(--ungu) 45%, var(--biru) 75%, var(--mint));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.sub { color: var(--teks-pudar); font-size: .9rem; margin-bottom: .4rem; }
+.sub b { color: var(--pink); }
+h2, h3 { font-family: 'Bricolage Grotesque', sans-serif !important; font-weight: 800 !important; color: var(--teks); }
+
+/* ---------- kartu angka ---------- */
+[data-testid="stMetric"] {
+    padding: .8rem 1rem !important; border-radius: 20px !important;
+    border: 1.5px solid transparent !important;
+    box-shadow: 0 8px 24px -12px rgba(80, 40, 120, .35);
+    transition: transform .15s ease;
+}
+[data-testid="stMetric"]:hover { transform: translateY(-2px); }
+[data-testid="stMetric"] > div, [data-testid="stMetricLabel"], [data-testid="stMetricValue"] {
+    padding: 0 !important; margin: 0 !important; min-height: 0 !important;
+}
+[data-testid="stMetricLabel"] p { font-weight: 600; font-size: .8rem; color: var(--teks-pudar); }
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] div {
+    font-family: 'Bricolage Grotesque', sans-serif !important;
+    font-weight: 800; font-size: 1.6rem; color: var(--teks);
+}
+[data-testid="stColumn"]:nth-child(4n+1) [data-testid="stMetric"] { background: linear-gradient(135deg, #ffd9ec, #fff3f9); border-color: #ffb3d6 !important; }
+[data-testid="stColumn"]:nth-child(4n+2) [data-testid="stMetric"] { background: linear-gradient(135deg, #cdf7e6, #f1fffa); border-color: #8fe6c6 !important; }
+[data-testid="stColumn"]:nth-child(4n+3) [data-testid="stMetric"] { background: linear-gradient(135deg, #d6e5ff, #f3f7ff); border-color: #a9c6ff !important; }
+[data-testid="stColumn"]:nth-child(4n+4) [data-testid="stMetric"] { background: linear-gradient(135deg, #eadcff, #f9f5ff); border-color: #cdb4ff !important; }
+
+/* ---------- tab ---------- */
+[data-baseweb="tab-list"], [data-testid="stTabs"] [role="tablist"] {
+    gap: .4rem; background: rgba(255,255,255,.65); padding: .3rem;
+    border-radius: 999px; width: fit-content; backdrop-filter: blur(6px);
+}
+[data-baseweb="tab-highlight"], [data-baseweb="tab-border"],
+[data-testid="stTabs"] [role="tablist"] > div:not([role="tab"]) { display: none !important; }
+[data-testid="stTabs"] [role="tab"], button[data-baseweb="tab"] { border: none !important; border-radius: 999px !important; padding: .35rem 1rem !important; height: auto !important; }
+[data-testid="stTabs"] [role="tab"] p { font-weight: 600; }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] { background: linear-gradient(90deg, var(--pink), var(--ungu)); }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] p { color: white !important; }
+
+/* ---------- tombol & menu ---------- */
+.stButton button, .stFormSubmitButton button {
+    border-radius: 999px !important; font-weight: 700 !important;
+    border: 1.5px solid #ffc2df !important; background: white !important; color: var(--pink) !important;
+}
+.stButton button:hover { border-color: var(--pink) !important; }
+.stFormSubmitButton button, .stButton button[kind="primary"] {
+    background: linear-gradient(90deg, var(--pink), var(--ungu) 60%, var(--biru)) !important;
+    color: white !important; border: none !important;
+    box-shadow: 0 8px 20px -8px rgba(255,79,163,.6);
+}
+.stFormSubmitButton button p, .stButton button[kind="primary"] p { color: white !important; }
+[data-testid="stButtonGroup"] button { border-radius: 999px !important; font-weight: 600 !important; background: rgba(255,255,255,.8); }
+[data-testid="stButtonGroup"] button[kind*="Active"] {
+    background: linear-gradient(90deg, var(--mint), var(--biru)) !important;
+    border-color: transparent !important;
+}
+[data-testid="stButtonGroup"] button[kind*="Active"] p { color: white !important; }
+
+/* ---------- input, tabel, kotak ---------- */
+[data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="base-input"] {
+    border-radius: 14px !important; background: rgba(255,255,255,.9) !important;
+}
 [data-testid="stSelectbox"] { max-width: 320px; }
+[data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+    background: white; border-radius: 18px; padding: .35rem;
+    box-shadow: 0 10px 30px -18px rgba(80, 40, 120, .45);
+}
+[data-testid="stForm"], [data-testid="stExpander"] details {
+    background: rgba(255,255,255,.75); border-radius: 20px !important; border: 1.5px solid #f3d6ea !important;
+}
+[data-testid="stAlert"] { border-radius: 16px; }
+
 /* Jangan pudarkan tampilan saat update otomatis tiap menit */
 [data-stale="true"], .stale-element { opacity: 1 !important; transition: none !important; }
 
+/* ---------- HP ---------- */
 @media (max-width: 640px) {
-    .block-container { padding: 2.8rem 0.8rem 2rem 0.8rem; }
-    h1 { font-size: 1.35rem !important; }
-    [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: 0.5rem !important; }
+    .block-container { padding: 2.6rem .8rem 2rem .8rem; }
+    .judul .teks { font-size: 1.5rem; }
+    .judul .ikon { font-size: 1.5rem; }
+    [data-testid="stHorizontalBlock"] { flex-wrap: wrap; gap: .5rem !important; }
     [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
-        flex: 1 1 calc(50% - 0.5rem) !important;
-        min-width: calc(50% - 0.5rem) !important;
-        width: calc(50% - 0.5rem) !important;
+        flex: 1 1 calc(50% - .5rem) !important; min-width: calc(50% - .5rem) !important; width: calc(50% - .5rem) !important;
     }
-    [data-testid="stMetric"] { padding: 0.45rem 0.65rem !important; min-height: 0 !important; }
+    [data-testid="stMetric"] { padding: .55rem .7rem !important; border-radius: 16px !important; }
     [data-testid="stSelectbox"] { max-width: none; }
-    .st-key-periode [data-testid="stColumn"] {
-        flex: 1 1 100% !important; min-width: 100% !important; width: 100% !important;
-    }
-    [data-testid="stMetricLabel"] p { font-size: 0.75rem; }
-    [data-testid="stMetricValue"] { font-size: 1.05rem; }
-    button[data-baseweb="tab"] p { font-size: 0.85rem; }
-    [data-baseweb="tab-list"] { gap: 0.6rem; }
+    .st-key-periode [data-testid="stColumn"] { flex: 1 1 100% !important; min-width: 100% !important; width: 100% !important; }
+    [data-testid="stMetricLabel"] p { font-size: .72rem; }
+    [data-testid="stMetricValue"], [data-testid="stMetricValue"] div { font-size: 1.1rem; }
+    [data-baseweb="tab-list"] { width: 100%; justify-content: space-between; }
+    button[data-baseweb="tab"] { padding: .3rem .6rem !important; }
+    button[data-baseweb="tab"] p { font-size: .8rem; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -656,14 +754,21 @@ def halaman_topup(cs, isi_xlsx, sheet_id):
 # MAIN
 # =========================================================
 
-st.title("📊 Laporan Iklan DMF 2")
+st.markdown(
+    '<div class="judul"><span class="ikon">📊</span>'
+    '<span class="teks">Laporan Iklan DMF 2</span></div>',
+    unsafe_allow_html=True,
+)
 
 if not rahasia("SHEET_ID"):
     st.error("SHEET_ID belum diatur di Secrets.")
     st.stop()
 
 info, tombol = st.columns([3, 1], vertical_alignment="center")
-info.caption("Interaksi · Kabupaten Serang · update otomatis tiap 1 menit")
+info.markdown(
+    '<div class="sub">Interaksi · Kabupaten Serang · <b>live</b> update tiap 1 menit ✨</div>',
+    unsafe_allow_html=True,
+)
 if tombol.button("🔄 Muat ulang", width="stretch"):
     st.cache_data.clear()
     st.rerun()
