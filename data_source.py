@@ -438,31 +438,60 @@ def _hasil_meta(baris: dict) -> float:
     return aksi.get("onsite_conversion.messaging_conversation_started_7d", aksi.get("lead", 0.0))
 
 
-def iklan_meta_harian(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> pd.DataFrame:
-    """Biaya & nomor per hari per CS dari akun-akun di ATURAN_META."""
+def _potong_per_minggu(mulai: str, sampai: str) -> list[tuple[str, str]]:
+    """Rentang tanggal dipecah per 7 hari supaya bisa diambil bersamaan."""
+    awal, akhir = pd.Timestamp(mulai), pd.Timestamp(sampai)
+    potongan = []
+    while awal <= akhir:
+        ujung = min(awal + pd.Timedelta(days=6), akhir)
+        potongan.append((f"{awal:%Y-%m-%d}", f"{ujung:%Y-%m-%d}"))
+        awal = ujung + pd.Timedelta(days=1)
+    return potongan
+
+
+def _ambil_insights(token: str, akun: str, mulai: str, sampai: str) -> list[dict]:
     import json
 
+    url = f"{META_API}/act_{akun}/insights"
+    params = {
+        "access_token": token, "level": "adset", "time_increment": 1,
+        "time_range": json.dumps({"since": mulai, "until": sampai}),
+        "fields": "adset_name,campaign_name,spend,actions,date_start",
+        "limit": 500,
+    }
+    hasil = []
+    while url:
+        data = requests.get(url, params=params, timeout=120).json()
+        if "error" in data:
+            raise RuntimeError(data["error"].get("message", "Error Meta API"))
+        hasil += data.get("data", [])
+        url, params = data.get("paging", {}).get("next"), None
+    return hasil
+
+
+def iklan_meta_harian(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> pd.DataFrame:
+    """Biaya & nomor per hari per CS dari akun-akun di ATURAN_META.
+
+    Diambil per potongan 7 hari secara bersamaan (jauh lebih cepat dari satu
+    permintaan panjang). Hari tanpa biaya tetap diambil karena Meta bisa
+    mencatat percakapan (atribusi 7 hari) di hari itu.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
     peta = peta_alias(cs)
+    tugas = [(a["akun"], m, s) for a in ATURAN_META for m, s in _potong_per_minggu(mulai, sampai)]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        hasil = list(pool.map(lambda t: (t[0], _ambil_insights(token, *t)), tugas))
+
     baris = []
-    for a in ATURAN_META:
-        url = f"{META_API}/act_{a['akun']}/insights"
-        params = {
-            "access_token": token, "level": "adset", "time_increment": 1,
-            "time_range": json.dumps({"since": mulai, "until": sampai}),
-            "fields": "adset_name,campaign_name,spend,actions,date_start", "limit": 500,
-        }
-        while url:
-            data = requests.get(url, params=params, timeout=120).json()
-            if "error" in data:
-                raise RuntimeError(data["error"].get("message", "Error Meta API"))
-            for r in data.get("data", []):
-                nama = cs_untuk_iklan(a["akun"], r.get("adset_name"), r.get("campaign_name"), peta)
-                if nama:
-                    baris.append({
-                        "tanggal": pd.Timestamp(r["date_start"]), "nama": nama,
-                        "biaya_iklan": angka(r.get("spend")), "nomor": _hasil_meta(r),
-                    })
-            url, params = data.get("paging", {}).get("next"), None
+    for akun, data in hasil:
+        for r in data:
+            nama = cs_untuk_iklan(akun, r.get("adset_name"), r.get("campaign_name"), peta)
+            if nama:
+                baris.append({
+                    "tanggal": pd.Timestamp(r["date_start"]), "nama": nama,
+                    "biaya_iklan": angka(r.get("spend")), "nomor": _hasil_meta(r),
+                })
     df = pd.DataFrame(baris, columns=["tanggal", "nama", "biaya_iklan", "nomor"])
     return df.groupby(["tanggal", "nama"], as_index=False).sum()
 
