@@ -301,14 +301,17 @@ def cs_untuk_iklan(akun: str, adset: str, campaign: str, peta: dict):
 
 
 def iklan_aktif(token: str, akun_iklan: list[str]) -> list[dict]:
-    """Semua iklan yang sedang tayang (ACTIVE) di akun-akun iklan."""
+    """Semua iklan yang benar-benar bisa tayang: status ACTIVE dan jadwal ad set
+    belum selesai (ad set dengan tanggal selesai yang sudah lewat tetap
+    berstatus ACTIVE di Meta, tapi tidak tayang lagi)."""
+    sekarang = pd.Timestamp.now(tz="Asia/Jakarta")
     hasil = []
     for akun in akun_iklan:
         url = f"{META_API}/act_{akun.strip()}/ads"
         params = {
             "access_token": token,
             "limit": 500,
-            "fields": "adset{name},campaign{name}",
+            "fields": "adset{name,end_time},campaign{name,stop_time}",
             "filtering": '[{"field":"effective_status","operator":"IN","value":["ACTIVE"]}]',
         }
         while url:
@@ -316,6 +319,13 @@ def iklan_aktif(token: str, akun_iklan: list[str]) -> list[dict]:
             if "error" in data:
                 raise RuntimeError(data["error"].get("message", "Error Meta API"))
             for ad in data.get("data", []):
+                selesai = [
+                    pd.Timestamp(t) for t in (
+                        ad.get("adset", {}).get("end_time"), ad.get("campaign", {}).get("stop_time"),
+                    ) if t
+                ]
+                if any(t <= sekarang for t in selesai):
+                    continue
                 hasil.append({
                     "akun": akun.strip(),
                     "adset": ad.get("adset", {}).get("name", ""),
