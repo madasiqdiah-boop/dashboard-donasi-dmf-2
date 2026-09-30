@@ -1,8 +1,9 @@
 """
-Sumber data dashboard: Google Sheet "Laporan Iklan Interaksi DMF 2".
+Sumber data dashboard.
 
-Sheet yang dibaca:
-- Madha        : biaya iklan & jumlah nomor per CS per hari
+Biaya iklan, nomor, dan status campaign: langsung dari Meta Ads.
+
+Dari Google Sheet "Laporan Iklan Interaksi DMF 2" hanya:
 - Dana Iklan   : modal iklan per CS, akumulasi, dan sisa (kolom Keterangan)
 - RECAP (spreadsheet donasi terpisah): data transfer donasi mentah, sumber
   resi & donasi. Bulan = bulan tanggal transfer.
@@ -97,7 +98,7 @@ def unduh_sheet(sheet_id: str, akun_layanan: dict | None = None) -> bytes:
 def baca_sheet(isi_xlsx: bytes) -> dict:
     return pd.read_excel(
         io.BytesIO(isi_xlsx),
-        sheet_name=["Madha", "Rekap Admin", "Dana Iklan"],
+        sheet_name=["Rekap Admin", "Dana Iklan"],
         header=None,
         engine="openpyxl",
     )
@@ -106,18 +107,6 @@ def baca_sheet(isi_xlsx: bytes) -> dict:
 # =========================================================
 # OLAH DATA
 # =========================================================
-
-def olah_iklan(madha: pd.DataFrame) -> pd.DataFrame:
-    """Madha: A=Bulan, B=Tanggal, C=Nama, D=Biaya Iklan, E=Data Iklan (nomor)."""
-    df = madha.iloc[2:, :5].copy()
-    df.columns = ["bulan", "tanggal", "nama", "biaya_iklan", "nomor"]
-    df["tanggal"] = pd.to_datetime(df["tanggal"], errors="coerce").dt.normalize()
-    df["kunci"] = df["nama"].map(norm)
-    df = df[(df["kunci"] != "") & df["tanggal"].notna()]
-    df["biaya_iklan"] = df["biaya_iklan"].map(angka)
-    df["nomor"] = df["nomor"].map(angka)
-    return df.groupby(["tanggal", "kunci"], as_index=False)[["nomor", "biaya_iklan"]].sum()
-
 
 def olah_resi(rekap: pd.DataFrame) -> pd.DataFrame:
     """Rekap Admin.
@@ -242,12 +231,12 @@ def peta_alias(cs: pd.DataFrame) -> dict:
 # =========================================================
 
 def siapkan(isi_xlsx: bytes, cs: pd.DataFrame, isi_recap: bytes | None = None):
-    """Hasil: (performa per hari per CS, dana iklan per CS, nama tak dikenal).
+    """Hasil: (resi & donasi per hari per CS, dana iklan per CS, nama tak dikenal).
 
     Resi & donasi dari RECAP kalau isi_recap ada, kalau tidak dari Rekap Admin.
+    Biaya iklan & nomor tidak dari sheet, tapi dari Meta (iklan_meta_rentang).
     """
     sheet = baca_sheet(isi_xlsx)
-    iklan = olah_iklan(sheet["Madha"])
     resi = olah_recap(isi_recap) if isi_recap else olah_resi(sheet["Rekap Admin"])
     dana = olah_dana(sheet["Dana Iklan"])
 
@@ -260,10 +249,9 @@ def siapkan(isi_xlsx: bytes, cs: pd.DataFrame, isi_recap: bytes | None = None):
         tak_dikenal.update(df.loc[df["nama"].isna(), "kunci"])
         return df.dropna(subset=["nama"]).drop(columns="kunci")
 
-    iklan, resi, dana = pasang_nama(iklan), pasang_nama(resi), pasang_nama(dana)
+    resi, dana = pasang_nama(resi), pasang_nama(dana)
 
-    performa = iklan.merge(resi, on=["tanggal", "nama"], how="outer")
-    performa = performa.groupby(["tanggal", "nama"], as_index=False).sum(numeric_only=True)
+    performa = resi.groupby(["tanggal", "nama"], as_index=False).sum(numeric_only=True)
     dana = dana.groupby("nama", as_index=False).sum(numeric_only=True)
     return performa, dana, sorted(tak_dikenal)
 
@@ -451,64 +439,6 @@ def _hasil_meta(baris: dict) -> float:
     return aksi.get("onsite_conversion.messaging_conversation_started_7d", aksi.get("lead", 0.0))
 
 
-def _potong_per_minggu(mulai: str, sampai: str) -> list[tuple[str, str]]:
-    """Rentang tanggal dipecah per 7 hari supaya bisa diambil bersamaan."""
-    awal, akhir = pd.Timestamp(mulai), pd.Timestamp(sampai)
-    potongan = []
-    while awal <= akhir:
-        ujung = min(awal + pd.Timedelta(days=6), akhir)
-        potongan.append((f"{awal:%Y-%m-%d}", f"{ujung:%Y-%m-%d}"))
-        awal = ujung + pd.Timedelta(days=1)
-    return potongan
-
-
-def _ambil_insights(token: str, akun: str, mulai: str, sampai: str) -> list[dict]:
-    import json
-
-    url = f"{META_API}/act_{akun}/insights"
-    params = {
-        "access_token": token, "level": "adset", "time_increment": 1,
-        "time_range": json.dumps({"since": mulai, "until": sampai}),
-        "fields": "adset_name,campaign_name,spend,actions,date_start",
-        "limit": 500,
-    }
-    hasil = []
-    while url:
-        data = requests.get(url, params=params, timeout=120).json()
-        if "error" in data:
-            raise RuntimeError(data["error"].get("message", "Error Meta API"))
-        hasil += data.get("data", [])
-        url, params = data.get("paging", {}).get("next"), None
-    return hasil
-
-
-def iklan_meta_harian(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> pd.DataFrame:
-    """Biaya & nomor per hari per CS dari akun-akun di aturan_meta().
-
-    Diambil per potongan 7 hari secara bersamaan (jauh lebih cepat dari satu
-    permintaan panjang). Hari tanpa biaya tetap diambil karena Meta bisa
-    mencatat percakapan (atribusi 7 hari) di hari itu.
-    """
-    from concurrent.futures import ThreadPoolExecutor
-
-    peta = peta_alias(cs)
-    tugas = [(a["akun"], m, s) for a in aturan_meta() for m, s in _potong_per_minggu(mulai, sampai)]
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        hasil = list(pool.map(lambda t: (t[0], _ambil_insights(token, *t)), tugas))
-
-    baris = []
-    for akun, data in hasil:
-        for r in data:
-            nama = cs_untuk_iklan(akun, r.get("adset_name"), r.get("campaign_name"), peta)
-            if nama:
-                baris.append({
-                    "tanggal": pd.Timestamp(r["date_start"]), "nama": nama,
-                    "biaya_iklan": angka(r.get("spend")), "nomor": _hasil_meta(r),
-                })
-    df = pd.DataFrame(baris, columns=["tanggal", "nama", "biaya_iklan", "nomor"])
-    return df.groupby(["tanggal", "nama"], as_index=False).sum()
-
-
 def iklan_meta_rentang(token: str, mulai: str, sampai: str, cs: pd.DataFrame) -> pd.DataFrame:
     """Biaya & hasil per CS untuk SATU rentang tanggal (sama dengan Ads Manager).
 
@@ -547,20 +477,3 @@ def iklan_meta_rentang(token: str, mulai: str, sampai: str, cs: pd.DataFrame) ->
                 baris.append({"nama": nama, "biaya_iklan": angka(r.get("spend")), "nomor": _hasil_meta(r)})
     df = pd.DataFrame(baris, columns=["nama", "biaya_iklan", "nomor"])
     return df.groupby("nama", as_index=False).sum()
-
-
-def timpa_dengan_meta(performa: pd.DataFrame, meta: pd.DataFrame) -> pd.DataFrame:
-    """Biaya & nomor CS di aturan_meta() diganti data Meta, per bulan.
-
-    Untuk (CS, bulan) yang punya data di Meta, catatan Madha bulan itu diabaikan
-    (Madha sering dicatat borongan, misal satu baris untuk sebulan).
-    """
-    if meta.empty:
-        return performa
-    df = performa.copy()
-    bulan_df = df["tanggal"].dt.to_period("M")
-    ada = set(zip(meta["nama"], meta["tanggal"].dt.to_period("M")))
-    ditimpa = [(n, b) in ada for n, b in zip(df["nama"], bulan_df)]
-    df.loc[ditimpa, ["biaya_iklan", "nomor"]] = 0
-    df = pd.concat([df, meta], ignore_index=True).fillna(0)
-    return df.groupby(["tanggal", "nama"], as_index=False).sum(numeric_only=True)

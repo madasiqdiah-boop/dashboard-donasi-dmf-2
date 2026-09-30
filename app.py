@@ -220,7 +220,7 @@ def hitung(df):
     df["cpr"] = df["biaya_iklan"] / df["nomor"].where(df["nomor"] > 0)
     df["all_resi"] = df["perdana"] + df["gulungan"]
     df["total_donasi"] = df["donasi_perdana"] + df["donasi_gulungan"]
-    df["roas"] = df["total_donasi"] / df["biaya_iklan"].where(df["biaya_iklan"] > 0)
+    df["roas"] = df["donasi_perdana"] / df["biaya_iklan"].where(df["biaya_iklan"] > 0)
     df["closing_rate"] = df["perdana"] / df["nomor"].where(df["nomor"] > 0) * 100
     df["profit"] = df["total_donasi"] - df["biaya_iklan"]
     df["rekomendasi"] = df.apply(rekomendasi, axis=1)
@@ -242,27 +242,19 @@ def baris_total(df):
     return total
 
 
-KOLOM_PERFORMA = ["nomor", "biaya_iklan", "perdana", "gulungan",
-                  "donasi_perdana", "donasi_gulungan"]
+KOLOM_RESI = ["perdana", "gulungan", "donasi_perdana", "donasi_gulungan"]
+KOLOM_PERFORMA = ["nomor", "biaya_iklan", *KOLOM_RESI]
 
 
 def data_rentang(mulai, akhir, performa, cs, meta_rentang=None):
-    """Gabungkan daftar CS aktif + performa (dijumlah) untuk rentang tanggal.
-
-    Kalau ada meta_rentang, biaya & nomor CS yang beriklan di Meta memakai
-    angka rentang itu langsung dari Meta (sama dengan Ads Manager).
-    """
+    """Daftar CS aktif + biaya & nomor dari Meta (angka rentang, sama dengan
+    Ads Manager) + resi & donasi dari sheet (dijumlah) untuk rentang tanggal."""
     aktif = cs[cs["aktif"]][["nama"]]
     pilih = performa[performa["tanggal"].between(pd.Timestamp(mulai), pd.Timestamp(akhir))]
-    perf = pilih.groupby("nama", as_index=False)[KOLOM_PERFORMA].sum()
-    if meta_rentang is not None and not meta_rentang.empty:
-        m = meta_rentang.set_index("nama")
-        ada = perf["nama"].isin(m.index)
-        perf.loc[ada, "biaya_iklan"] = perf.loc[ada, "nama"].map(m["biaya_iklan"])
-        perf.loc[ada, "nomor"] = perf.loc[ada, "nama"].map(m["nomor"])
-        baru = m.loc[~m.index.isin(perf["nama"])].reset_index()
-        perf = pd.concat([perf, baru], ignore_index=True).fillna(0)
-    df = aktif.merge(perf, on="nama", how="left")
+    resi = pilih.groupby("nama", as_index=False)[KOLOM_RESI].sum()
+    if meta_rentang is None:
+        meta_rentang = pd.DataFrame(columns=["nama", "biaya_iklan", "nomor"])
+    df = aktif.merge(meta_rentang, on="nama", how="left").merge(resi, on="nama", how="left")
     for kolom in KOLOM_PERFORMA:
         if kolom not in df:
             df[kolom] = 0
@@ -289,9 +281,10 @@ def ambil_sheet(sheet_id):
     return isi, datetime.now(timezone(timedelta(hours=7)))
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=7200, show_spinner=False)
 def ambil_status(cs_csv):
-    """{nama CS: jumlah iklan aktif}, atau None kalau Meta belum tersambung."""
+    """{nama CS: jumlah iklan aktif}, atau None kalau Meta belum tersambung.
+    Diambil ulang tiap 2 jam supaya tidak cepat kena batas permintaan Meta."""
     token = rahasia("META_ACCESS_TOKEN")
     akun = rahasia("META_AD_ACCOUNT_IDS")
     if not token or not akun:
@@ -300,33 +293,78 @@ def ambil_status(cs_csv):
     return ds.status_campaign(token, str(akun).split(","), cs)
 
 
-META_MULAI = "2026-05-01"
+@st.cache_resource
+def status_terakhir():
+    """Status campaign terakhir yang berhasil + jam gagal terakhir."""
+    return {"data": None, "jam": None, "gagal": None}
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def ambil_meta_riwayat(kemarin, cs_json):
-    """Biaya & nomor Meta sampai kemarin (jarang berubah, diambil ulang tiap jam)."""
-    token = rahasia("META_ACCESS_TOKEN")
-    cs = pd.read_json(io.StringIO(cs_json))
-    return ds.iklan_meta_harian(token, META_MULAI, kemarin, cs)
+def status_aman(cs_json):
+    """Hasil: (status, peringatan). Kalau Meta menolak, pakai status terakhir
+    dan jangan coba lagi selama 15 menit (supaya batas permintaan Meta pulih)."""
+    simpan = status_terakhir()
+    sekarang = waktu_sekarang()
+    if simpan["gagal"] and sekarang - simpan["gagal"] < timedelta(minutes=15):
+        alasan = "Meta sedang membatasi permintaan"
+    else:
+        try:
+            status = ambil_status(cs_json)
+        except Exception as e:
+            simpan["gagal"] = sekarang
+            alasan = str(e)
+        else:
+            simpan.update(data=status, jam=sekarang, gagal=None)
+            return status, None
+    if simpan["data"] is None:
+        return None, f"Status campaign Meta belum bisa diambil ({alasan})."
+    return simpan["data"], f"Status campaign dari data jam {simpan['jam']:%H:%M} WIB ({alasan})."
 
 
-@st.cache_data(ttl=60, show_spinner=False)
-def ambil_meta_hari_ini(hari_ini, cs_json):
-    """Biaya & nomor Meta hari ini (diambil ulang tiap menit)."""
-    token = rahasia("META_ACCESS_TOKEN")
-    cs = pd.read_json(io.StringIO(cs_json))
-    return ds.iklan_meta_harian(token, hari_ini, hari_ini, cs)
-
-
-@st.cache_data(ttl=60, show_spinner=False)
-def ambil_meta_rentang(mulai, akhir, cs_json):
-    """Biaya & hasil per CS untuk rentang terpilih, langsung dari Meta (= Ads Manager)."""
+def _meta_rentang(mulai, akhir, cs_json):
     token = rahasia("META_ACCESS_TOKEN")
     if not token:
         return None
     cs = pd.read_json(io.StringIO(cs_json))
     return ds.iklan_meta_rentang(token, f"{mulai:%Y-%m-%d}", f"{akhir:%Y-%m-%d}", cs)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def ambil_meta_rentang_live(mulai, akhir, cs_json):
+    """Rentang yang memuat hari ini: diambil ulang tiap menit."""
+    return _meta_rentang(mulai, akhir, cs_json)
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def ambil_meta_rentang_lama(mulai, akhir, cs_json):
+    """Rentang yang sudah lewat (misal bulan lalu): angkanya hampir tidak
+    berubah, cukup diambil ulang tiap 6 jam."""
+    return _meta_rentang(mulai, akhir, cs_json)
+
+
+@st.cache_resource
+def meta_terakhir():
+    """{(mulai, akhir): (data, jam)} data Meta terakhir yang berhasil diambil,
+    dipakai kalau Meta sedang menolak (batas permintaan)."""
+    return {}
+
+
+def ambil_meta_rentang(mulai, akhir, cs_json):
+    """Biaya & hasil per CS untuk rentang terpilih, langsung dari Meta (= Ads Manager).
+
+    Hasil: (data, peringatan). Kalau Meta gagal, pakai data terakhir yang berhasil.
+    """
+    live = akhir >= waktu_sekarang().date()
+    ambil = ambil_meta_rentang_live if live else ambil_meta_rentang_lama
+    try:
+        data = ambil(mulai, akhir, cs_json)
+    except Exception as e:
+        lama = meta_terakhir().get((mulai, akhir))
+        if lama is None:
+            return None, f"Biaya iklan dari Meta belum bisa diambil: {e}"
+        return lama[0], f"Meta sedang menolak ({e}), pakai data Meta terakhir jam {lama[1]:%H:%M} WIB."
+    if data is not None:
+        meta_terakhir()[(mulai, akhir)] = (data, waktu_sekarang())
+    return data, None
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -354,17 +392,6 @@ def muat_data(cs):
 
     cs_json = cs.to_json()
     performa, dana, tak_dikenal = olah_sheet(isi_xlsx, isi_recap, cs_json)
-
-    if rahasia("META_ACCESS_TOKEN"):
-        hari_ini = waktu_sekarang().date()
-        try:
-            meta = pd.concat([
-                ambil_meta_riwayat(f"{hari_ini - timedelta(days=1):%Y-%m-%d}", cs_json),
-                ambil_meta_hari_ini(f"{hari_ini:%Y-%m-%d}", cs_json),
-            ], ignore_index=True)
-            performa = ds.timpa_dengan_meta(performa, meta)
-        except Exception as e:
-            peringatan.append(f"Biaya iklan dari Meta tidak bisa diambil, pakai data sheet: {e}")
 
     return {
         "sheet_id": sheet_id, "isi_xlsx": isi_xlsx, "performa": performa,
@@ -532,7 +559,7 @@ def tab_laporan(df, total):
         st.markdown("""
 - **CPR** = Biaya Iklan ÷ Nomor
 - **All Resi** = Perdana + Gulungan
-- **ROAS** = (Donasi Perdana + Donasi Gulungan) ÷ Biaya Iklan
+- **ROAS** = Donasi Perdana ÷ Biaya Iklan
 - **Closing Rate** = Perdana ÷ Nomor × 100
 - **Profit / Loss** = Donasi Perdana + Donasi Gulungan − Biaya Iklan
 """)
@@ -599,7 +626,7 @@ def tab_rekomendasi(df):
     st.markdown(f"""
 **Aturan rekomendasi:**
 - 🟢 **Layak Scale Up**: ROAS ≥ {desimal(SCALE_UP_MIN_ROAS)}, Closing Rate ≥ {SCALE_UP_MIN_CLOSING}%, dan Nomor ≥ {SCALE_UP_MIN_NOMOR}
-- 🔴 **Evaluasi**: ROAS < {desimal(EVALUASI_MAX_ROAS)} (donasi belum menutup biaya iklan)
+- 🔴 **Evaluasi**: ROAS < {desimal(EVALUASI_MAX_ROAS)} (donasi perdana belum menutup biaya iklan)
 - 🟡 **Pertahankan**: di antara keduanya
 """)
 
@@ -820,16 +847,12 @@ def laporan_live(mulai, akhir, cs):
         return
     for pesan in data["peringatan"]:
         st.warning(pesan, icon="⚠️")
-    try:
-        status = ambil_status(cs.to_json())
-    except Exception as e:
-        st.warning(f"Status campaign Meta tidak bisa diambil: {e}", icon="⚠️")
-        status = None
-    try:
-        meta_rentang = ambil_meta_rentang(mulai, akhir, cs.to_json())
-    except Exception as e:
-        st.warning(f"Angka rentang dari Meta tidak bisa diambil, pakai jumlah harian: {e}", icon="⚠️")
-        meta_rentang = None
+    status, pesan = status_aman(cs.to_json())
+    if pesan:
+        st.warning(pesan, icon="⚠️")
+    meta_rentang, pesan = ambil_meta_rentang(mulai, akhir, cs.to_json())
+    if pesan:
+        st.warning(pesan, icon="⚠️")
     st.caption(f"🟢 Diperbarui {waktu_sekarang():%H:%M:%S} WIB")
     halaman_laporan(mulai, akhir, data["performa"], data["dana"], cs, status, meta_rentang)
 
