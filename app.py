@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 import data_source as ds
+import laporan_pdf
 
 load_dotenv()
 
@@ -634,6 +635,14 @@ def tab_rekomendasi(df):
 def halaman_laporan(mulai, akhir, performa, dana, cs, status, meta_rentang=None):
     df = pasang_status(data_rentang(mulai, akhir, performa, cs, meta_rentang), status)
     total = baris_total(df).iloc[0]
+
+    try:
+        isi_pdf = laporan_pdf.buat_pdf(df, total, dana, mulai, akhir)
+    except Exception as e:
+        st.caption(f"PDF belum bisa dibuat: {e}")
+    else:
+        nama_file = f"Laporan DMF 2 {mulai:%d-%m-%Y}" + ("" if mulai == akhir else f" sd {akhir:%d-%m-%Y}") + ".pdf"
+        st.download_button("📄 Unduh PDF", data=isi_pdf, file_name=nama_file, mime="application/pdf")
 
     t1, t2, t3 = st.tabs(["📋 Laporan", "💰 Jatah & Sisa", "🚀 Rekomendasi"])
     with t1:
