@@ -236,8 +236,6 @@ def baris_total(df):
         "donasi_perdana", "donasi_gulungan",
     ]].sum()
     total = pd.DataFrame([t])
-    if "sisa_iklan" in df:
-        total["sisa_iklan"] = df["sisa_iklan"].sum(min_count=1)
     total["nama"] = "Jumlah"
     total = hitung(total)
     total["rekomendasi"] = ""
@@ -370,6 +368,35 @@ def ambil_meta_rentang(mulai, akhir, cs_json):
     return data, None
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def ambil_saldo_akun():
+    """Batas pengeluaran & sisa akun iklan HKM 2 (dari Meta)."""
+    token, akun = rahasia("META_ACCESS_TOKEN"), rahasia("META_AKUN_HKM2")
+    if not token or not akun:
+        return None
+    return ds.saldo_akun(token, akun)
+
+
+def tampilkan_saldo_akun():
+    try:
+        s = ambil_saldo_akun()
+    except Exception as e:
+        st.caption(f"Sisa dana akun iklan tidak bisa diambil: {e}")
+        return
+    if not s:
+        return
+    with st.container(key="saldo_akun"):
+        k1, k2, k3 = st.columns(3)
+        k1.metric(f"💳 Sisa Dana Akun {s['nama']}",
+                  "Tanpa batas" if s["sisa"] is None else f"Rp {rupiah(s['sisa'])}", border=True)
+        k2.metric("Batas pengeluaran / terpakai",
+                  "-" if s["batas"] is None else f"Rp {rupiah(s['batas'])} / {rupiah(s['terpakai'])}", border=True)
+        k3.metric("Tagihan berjalan", f"Rp {rupiah(s['tagihan'])}", border=True)
+    if s["sisa"] is not None and s["sisa"] < 2_000_000:
+        st.warning("Sisa dana akun iklan tinggal sedikit. Kalau habis, SEMUA iklan di akun ini berhenti. "
+                   "Naikkan atau reset batas pengeluaran di Meta (Penagihan & pembayaran).", icon="⚠️")
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def olah_sheet(isi_xlsx, isi_recap, cs_json):
     return ds.siapkan(isi_xlsx, pd.read_json(io.StringIO(cs_json)), isi_recap)
@@ -478,7 +505,6 @@ FORMAT_KOLOM = {
     "Sisa Iklan": rupiah, "CPR": rupiah, "Donasi Perdana (Rp)": rupiah,
     "Donasi Gulungan (Rp)": rupiah, "Profit / Loss": rupiah, "ROAS": desimal,
     "Closing Rate (%)": desimal, "Total Topup": rupiah,
-    "Sisa Dana Iklan": rupiah,
 }
 KOLOM_TEKS = ("Nama", "Campaign Hari Ini", "Rekomendasi")
 
@@ -541,10 +567,6 @@ def tab_laporan(df, total):
     k7.metric("ROAS", desimal(total["roas"]), border=True)
     k8.metric("Closing Rate", f"{desimal(total['closing_rate'])}%", border=True)
 
-    k9, k10, _, _ = st.columns(4)
-    k9.metric("Sisa Dana Iklan", f"Rp {rupiah(total['sisa_iklan'])}", border=True)
-    k10.metric("CS Sisa Minus", f"{int((df['sisa_iklan'] < 0).sum())} CS", border=True)
-
     tampilkan_tabel(
         df,
         {
@@ -559,9 +581,8 @@ def tab_laporan(df, total):
             "donasi_perdana": "Donasi Perdana (Rp)",
             "donasi_gulungan": "Donasi Gulungan (Rp)",
             "profit": "Profit / Loss",
-            "sisa_iklan": "Sisa Dana Iklan",
         },
-        warna_kolom=["Profit / Loss", "Sisa Dana Iklan"],
+        warna_kolom=["Profit / Loss"],
     )
 
     with st.expander("Cara hitung"):
@@ -571,7 +592,6 @@ def tab_laporan(df, total):
 - **ROAS** = Donasi Perdana ÷ Biaya Iklan
 - **Closing Rate** = Perdana ÷ Nomor × 100
 - **Profit / Loss** = Donasi Perdana + Donasi Gulungan − Biaya Iklan
-- **Sisa Dana Iklan** = sisa modal iklan tiap CS dari sheet **Dana Iklan** (kolom Keterangan, akumulasi semua bulan, tidak ikut filter tanggal)
 """)
 
 
@@ -643,11 +663,9 @@ def tab_rekomendasi(df):
 
 def halaman_laporan(mulai, akhir, performa, dana, cs, status, meta_rentang=None):
     df = pasang_status(data_rentang(mulai, akhir, performa, cs, meta_rentang), status)
-    if dana is not None and not dana.empty:
-        df = df.merge(dana[["nama", "sisa_iklan"]], on="nama", how="left")
-    else:
-        df["sisa_iklan"] = float("nan")
     total = baris_total(df).iloc[0]
+
+    tampilkan_saldo_akun()
 
     try:
         isi_pdf = laporan_pdf.buat_pdf(df, total, dana, mulai, akhir)

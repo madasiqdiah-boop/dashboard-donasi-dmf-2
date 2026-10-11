@@ -477,3 +477,16 @@ def iklan_meta_rentang(token: str, mulai: str, sampai: str, cs: pd.DataFrame) ->
                 baris.append({"nama": nama, "biaya_iklan": angka(r.get("spend")), "nomor": _hasil_meta(r)})
     df = pd.DataFrame(baris, columns=["nama", "biaya_iklan", "nomor"])
     return df.groupby("nama", as_index=False).sum()
+
+
+def saldo_akun(token: str, akun: str) -> dict:
+    """Sisa batas pengeluaran akun iklan (spend_cap - amount_spent), dalam Rupiah."""
+    r = requests.get(f"{META_API}/act_{akun.strip()}", params={
+        "access_token": token, "fields": "name,spend_cap,amount_spent,balance"}, timeout=60).json()
+    if "error" in r:
+        raise RuntimeError(r["error"].get("message", "Error Meta API"))
+    batas = angka(r.get("spend_cap")) or None
+    terpakai = angka(r.get("amount_spent"))
+    nama = str(r.get("name", "")).replace("MJO - Harizi ", "")
+    return {"nama": nama, "batas": batas, "terpakai": terpakai,
+            "sisa": (batas - terpakai) if batas else None, "tagihan": angka(r.get("balance"))}
