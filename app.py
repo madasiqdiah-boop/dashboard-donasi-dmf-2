@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
 import data_source as ds
-import karyawan_ai
 import laporan_pdf
 
 load_dotenv()
@@ -869,7 +868,7 @@ if tombol.button("🔄 Muat ulang", width="stretch"):
     st.rerun()
 
 menu = st.segmented_control(
-    "Menu", ["📊 Laporan", "💳 Topup Iklan", "⚙️ Kelola CS", "🤖 Karyawan AI"], default="📊 Laporan",
+    "Menu", ["📊 Laporan", "💳 Topup Iklan", "⚙️ Kelola CS"], default="📊 Laporan",
     label_visibility="collapsed",
 ) or "📊 Laporan"
 
@@ -896,29 +895,9 @@ def laporan_live(mulai, akhir, cs):
     halaman_laporan(mulai, akhir, data["performa"], data["dana"], cs, status, meta_rentang)
 
 
-def halaman_karyawan_ai(cs):
-    if not is_admin():
-        form_login()
-        return
-    mulai, akhir = pilih_tanggal(waktu_sekarang().date())
-    try:
-        data = muat_data(cs)
-    except Exception as e:
-        st.error(f"Gagal mengambil data dari Google Sheet: {e}")
-        return
-    meta_rentang, _ = ambil_meta_rentang(mulai, akhir, cs.to_json())
-    df = data_rentang(mulai, akhir, data["performa"], cs, meta_rentang)
-    total = baris_total(df).iloc[0]
-    karyawan_ai.halaman(
-        rahasia("ANTHROPIC_API_KEY"), karyawan_ai.ringkasan_data(df, total, mulai, akhir),
-    )
-
-
 if menu == "📊 Laporan":
     mulai, akhir = pilih_tanggal(waktu_sekarang().date())
     laporan_live(mulai, akhir, cs)
-elif menu == "🤖 Karyawan AI":
-    halaman_karyawan_ai(cs)
 else:
     try:
         data = muat_data(cs)
