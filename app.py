@@ -236,6 +236,8 @@ def baris_total(df):
         "donasi_perdana", "donasi_gulungan",
     ]].sum()
     total = pd.DataFrame([t])
+    if "sisa_iklan" in df:
+        total["sisa_iklan"] = df["sisa_iklan"].sum(min_count=1)
     total["nama"] = "Jumlah"
     total = hitung(total)
     total["rekomendasi"] = ""
@@ -476,6 +478,7 @@ FORMAT_KOLOM = {
     "Sisa Iklan": rupiah, "CPR": rupiah, "Donasi Perdana (Rp)": rupiah,
     "Donasi Gulungan (Rp)": rupiah, "Profit / Loss": rupiah, "ROAS": desimal,
     "Closing Rate (%)": desimal, "Total Topup": rupiah,
+    "Sisa Dana Iklan": rupiah,
 }
 KOLOM_TEKS = ("Nama", "Campaign Hari Ini", "Rekomendasi")
 
@@ -538,6 +541,10 @@ def tab_laporan(df, total):
     k7.metric("ROAS", desimal(total["roas"]), border=True)
     k8.metric("Closing Rate", f"{desimal(total['closing_rate'])}%", border=True)
 
+    k9, k10, _, _ = st.columns(4)
+    k9.metric("Sisa Dana Iklan", f"Rp {rupiah(total['sisa_iklan'])}", border=True)
+    k10.metric("CS Sisa Minus", f"{int((df['sisa_iklan'] < 0).sum())} CS", border=True)
+
     tampilkan_tabel(
         df,
         {
@@ -552,8 +559,9 @@ def tab_laporan(df, total):
             "donasi_perdana": "Donasi Perdana (Rp)",
             "donasi_gulungan": "Donasi Gulungan (Rp)",
             "profit": "Profit / Loss",
+            "sisa_iklan": "Sisa Dana Iklan",
         },
-        warna_kolom=["Profit / Loss"],
+        warna_kolom=["Profit / Loss", "Sisa Dana Iklan"],
     )
 
     with st.expander("Cara hitung"):
@@ -563,6 +571,7 @@ def tab_laporan(df, total):
 - **ROAS** = Donasi Perdana ÷ Biaya Iklan
 - **Closing Rate** = Perdana ÷ Nomor × 100
 - **Profit / Loss** = Donasi Perdana + Donasi Gulungan − Biaya Iklan
+- **Sisa Dana Iklan** = sisa modal iklan tiap CS dari sheet **Dana Iklan** (kolom Keterangan, akumulasi semua bulan, tidak ikut filter tanggal)
 """)
 
 
@@ -634,6 +643,10 @@ def tab_rekomendasi(df):
 
 def halaman_laporan(mulai, akhir, performa, dana, cs, status, meta_rentang=None):
     df = pasang_status(data_rentang(mulai, akhir, performa, cs, meta_rentang), status)
+    if dana is not None and not dana.empty:
+        df = df.merge(dana[["nama", "sisa_iklan"]], on="nama", how="left")
+    else:
+        df["sisa_iklan"] = float("nan")
     total = baris_total(df).iloc[0]
 
     try:
