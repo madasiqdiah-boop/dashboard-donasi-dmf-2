@@ -505,6 +505,7 @@ FORMAT_KOLOM = {
     "Sisa Iklan": rupiah, "CPR": rupiah, "Donasi Perdana (Rp)": rupiah,
     "Donasi Gulungan (Rp)": rupiah, "Profit / Loss": rupiah, "ROAS": desimal,
     "Closing Rate (%)": desimal, "Total Topup": rupiah,
+    "Bagi Hasil 25%": rupiah, "Total Donasi": rupiah,
 }
 KOLOM_TEKS = ("Nama", "Campaign Hari Ini", "Rekomendasi")
 
@@ -686,7 +687,46 @@ def halaman_laporan(mulai, akhir, performa, dana, cs, status, meta_rentang=None)
 # HALAMAN: KELOLA CS
 # =========================================================
 
-def halaman_kelola(cs, tak_dikenal):
+PERSEN_BAGI_HASIL = 0.25
+
+
+def bagian_bagi_hasil(cs, performa):
+    """Bagi hasil 25% dari profit per CS untuk satu bulan."""
+    st.markdown(f"#### 💰 Bagi Hasil {PERSEN_BAGI_HASIL:.0%} dari Profit")
+    hari_ini = waktu_sekarang().date()
+    daftar = []
+    t = hari_ini.replace(day=1)
+    while t >= datetime(2026, 5, 1).date():
+        daftar.append(t)
+        t = (t - timedelta(days=1)).replace(day=1)
+    awal = st.selectbox("Bulan", daftar, format_func=lambda d: nama_bulan(f"{d:%Y-%m}"), key="bulan_bagi_hasil")
+    akhir_bulan = (awal.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
+    akhir = min(akhir_bulan, hari_ini)
+
+    meta_rentang, pesan = ambil_meta_rentang(awal, akhir, cs.to_json())
+    if pesan:
+        st.warning(pesan, icon="⚠️")
+    df = data_rentang(awal, akhir, performa, cs, meta_rentang)
+    df["bagi_hasil"] = df["profit"].clip(lower=0) * PERSEN_BAGI_HASIL
+    df = df.sort_values("bagi_hasil", ascending=False)
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Total Profit", f"Rp {rupiah(df['profit'].sum())}", border=True)
+    k2.metric(f"Total Bagi Hasil {PERSEN_BAGI_HASIL:.0%}", f"Rp {rupiah(df['bagi_hasil'].sum())}", border=True)
+    k3.metric("CS dapat bagi hasil", f"{int((df['bagi_hasil'] > 0).sum())} CS", border=True)
+    tampilkan_tabel(
+        df,
+        {"biaya_iklan": "Biaya Iklan", "total_donasi": "Total Donasi", "profit": "Profit / Loss",
+         "bagi_hasil": f"Bagi Hasil {PERSEN_BAGI_HASIL:.0%}"},
+        warna_kolom=["Profit / Loss"], pakai_total=False,
+    )
+    st.caption(
+        f"Periode {awal:%d/%m/%Y} - {akhir:%d/%m/%Y}. Bagi hasil = {PERSEN_BAGI_HASIL:.0%} x Profit "
+        "(Donasi Perdana + Gulungan - Biaya Iklan). Profit minus = Rp 0."
+    )
+
+
+def halaman_kelola(cs, tak_dikenal, performa=None):
     st.subheader("⚙️ Kelola CS")
 
     if not is_admin():
@@ -725,6 +765,10 @@ def halaman_kelola(cs, tak_dikenal):
         ds.save_cs(edit)
         st.success("Tersimpan.")
         st.rerun()
+
+    if performa is not None:
+        st.divider()
+        bagian_bagi_hasil(cs, performa)
 
 
 # =========================================================
@@ -907,4 +951,4 @@ else:
     if menu == "💳 Topup Iklan":
         halaman_topup(cs, data["isi_xlsx"], data["sheet_id"])
     else:
-        halaman_kelola(cs, data["tak_dikenal"])
+        halaman_kelola(cs, data["tak_dikenal"], data["performa"])
