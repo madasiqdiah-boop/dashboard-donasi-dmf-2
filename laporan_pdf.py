@@ -1,4 +1,4 @@
-"""Buat laporan PDF (Laporan, Rekomendasi, Jatah & Sisa) untuk diunduh dari dashboard."""
+"""Buat laporan PDF (bagian Laporan saja) untuk diunduh dari dashboard."""
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -109,12 +109,11 @@ class _PDF(FPDF):
         self.ln(3)
 
 
-def buat_pdf(df, total, dana, mulai, akhir) -> bytes:
-    """df: data per CS (hasil hitung + status), total: baris Jumlah, dana: Dana Iklan per CS."""
+def buat_pdf(df, total, mulai, akhir) -> bytes:
+    """df: data per CS (hasil hitung), total: baris Jumlah. Hanya halaman Laporan."""
     periode = f"{mulai:%d/%m/%Y}" + ("" if mulai == akhir else f" - {akhir:%d/%m/%Y}")
     pdf = _PDF(periode)
 
-    # ---------- 1. Laporan ----------
     pdf.add_page()
     pdf.subjudul("Ringkasan")
     pdf.ringkasan([
@@ -146,44 +145,5 @@ def buat_pdf(df, total, dana, mulai, akhir) -> bytes:
     pdf.set_text_color(*ABU)
     pdf.multi_cell(0, 4, "CPR = Biaya / Nomor  |  ROAS = Donasi Perdana / Biaya  |  Closing = Resi Perdana / Nomor x 100  |  "
                          "Profit = Donasi Perdana + Gulungan - Biaya. Biaya & nomor dari Meta Ads; resi & donasi dari sheet RECAP.")
-
-    # ---------- 2. Rekomendasi ----------
-    pdf.add_page()
-    pdf.subjudul("Rekomendasi")
-    urut = {"Layak Scale Up": 0, "Pertahankan": 1, "Evaluasi": 2}
-    rek = df.assign(_r=df["rekomendasi"].map(_bersih))
-    rek = rek.assign(_u=rek["_r"].map(urut).fillna(3)).sort_values(["_u", "roas"], ascending=[True, False])
-    jumlah = rek["_r"].value_counts()
-    pdf.ringkasan([
-        ("Layak Scale Up", f"{jumlah.get('Layak Scale Up', 0)} CS"),
-        ("Pertahankan", f"{jumlah.get('Pertahankan', 0)} CS"),
-        ("Evaluasi", f"{jumlah.get('Evaluasi', 0)} CS"),
-        ("Campaign Nyala", f"{int(df['status_campaign'].astype(str).str.contains('Nyala').sum())} CS"),
-    ])
-    baris = [[
-        (_bersih(r["nama"]), None), (_bersih(r["status_campaign"]) or "-", None), (r["_r"] or "-", None),
-        (_des(r["roas"]), None), (_des(r["closing_rate"]), None), (_angka(r["nomor"]), None),
-        (_rp(r["cpr"]), None), (_rp(r["biaya_iklan"]), None), (_rp(r["profit"]), r["profit"]),
-    ] for _, r in rek.iterrows()]
-    pdf.tabel(["Nama", "Campaign Hari Ini", "Rekomendasi", "ROAS", "Closing %", "Nomor", "CPR", "Biaya Iklan", "Profit / Loss"],
-              baris, lebar=(28, 38, 34, 18, 22, 20, 26, 34, 34),
-              rata=("LEFT", "LEFT", "LEFT") + ("RIGHT",) * 6, warna_kolom=(8,))
-
-    # ---------- 3. Jatah & Sisa ----------
-    if dana is not None and not dana.empty:
-        pdf.add_page()
-        pdf.subjudul("Jatah & Sisa Iklan (akumulasi, dari sheet Dana Iklan)")
-        d = df[["nama"]].merge(dana, on="nama", how="left").sort_values("sisa_iklan")
-        pdf.ringkasan([
-            ("Total Modal Iklan", f"Rp {_rp(d['modal_iklan'].sum())}"),
-            ("Akumulasi Profit", f"Rp {_rp(d['akumulasi'].sum())}"),
-            ("Total Sisa Iklan", f"Rp {_rp(d['sisa_iklan'].sum())}"),
-            ("CS Sisa Minus", f"{int((d['sisa_iklan'] < 0).sum())} CS"),
-        ])
-        baris = [[(_bersih(r["nama"]), None), (_rp(r["modal_iklan"]), None),
-                  (_rp(r["akumulasi"]), r["akumulasi"]), (_rp(r["sisa_iklan"]), r["sisa_iklan"])]
-                 for _, r in d.iterrows()]
-        pdf.tabel(["Nama", "Modal Iklan", "Akumulasi Profit", "Sisa Iklan"], baris,
-                  lebar=(60, 60, 70, 60), rata=("LEFT", "RIGHT", "RIGHT", "RIGHT"), warna_kolom=(2, 3))
 
     return bytes(pdf.output())

@@ -667,7 +667,7 @@ def halaman_laporan(mulai, akhir, performa, dana, cs, status, meta_rentang=None)
     total = baris_total(df).iloc[0]
 
     try:
-        isi_pdf = laporan_pdf.buat_pdf(df, total, dana, mulai, akhir)
+        isi_pdf = laporan_pdf.buat_pdf(df, total, mulai, akhir)
     except Exception as e:
         st.caption(f"PDF belum bisa dibuat: {e}")
     else:
